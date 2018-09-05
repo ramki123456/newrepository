@@ -1,0 +1,118 @@
+1. Create a Django Project on Desktop...
+
+	django-admin startproject TestPro
+
+2. It creates a folder on Desktop with the name "TestPro", and folder structures shown in Folder.
+
+3. To initalize the Database, do the changes in settings.py/DATABASES column.
+
+4. Changes were made, and now run the migrations on TestPro.
+
+	python manage.py makemigrations
+	# Sae the changes to DB permanantly.
+	python manage.py migrate
+
+5. Database created successfully. Check for the DB in Project folder.
+
+#######################  Creating Super User  #######################
+
+Run the below command to create super user, who have access to do any changes in ADMIN site(Referal to django Project).
+
+	python manage.py createsuperuser
+
+######################################################################
+
+######################  Running the Django Project as Server  ########
+
+Run the below command to run the Django Project.
+
+	python manage.py runserver
+
+The above step results output like below...................
+
+System check identified no issues (0 silenced).
+July 17, 2016 - 04:03:53
+Django version 1.9, using settings 'TestPro.settings'
+Starting development server at http://127.0.0.1:8000/
+Quit the server with CONTROL-C.
+
+Open http://127.0.0.1:8000/ in any browser.
+
+#######################################################################
+
+############################  Open Admin site ##########################
+
+Use http://127.0.0.1:8000/admin to open the admin site and login with super user credentials.
+
+Now you can see the Django Project tables in Admin site, we can modify any table data directly..
+
+########################################################################
+
+
+#######################  Creating application  #######################
+
+Create an application by running below command.............
+
+	python manage.py startapp myapp
+
+The above step will create an application in Project folder with the name "myapp"
+
+######################################################################
+
+#######################  Map the Application with Project  ###########
+
+1. Open steetings.py.
+2. Locate INSTALLED_APPS column
+3. Add your application name at the end.
+
+#######################################################################
+
+#######################  Creating DB tables  ##########################
+
+1. We can create DB tables by creating classes in models.py which inherits "models.Model".
+2. Now refresh the DB by following above DB creation commands.
+
+	python manage.py makemigrations
+	# Sae the changes to DB permanantly.
+	python manage.py migrate
+3. check for the Table StockDetails in DB.
+
+#######################################################################
+
+#######################  register the tables to Admin site  ###########
+
+1. Open admin.py.
+2.Import your tables.
+3. register them by using the below command.
+
+	admin.site.register(Table Name)
+
+#######################################################################
+
+Note : In admin site we can see the stock details with the class name for every record.
+We can change the name of the display record by placinf __unicode__ method in models.
+
+
+######################   ORM   ########################################
+
+1. ORM stands for Object Relational Mapping ..
+2. Used to perform CRUD operations on DB tables with out using DB commands.
+3. To work with ORM concepts, we have to create object for DB table.
+4. Before that import the DB tables and run the commands from Shell prompt.
+5.Shell prompt can be opened by using below command.
+
+	python manage.py shell
+
+
+In ORM, we can insert a new record by using create method.
+
+	obj = StockDetails.objects.create(field1=val1, field2=val2, ....)
+	obj.save()
+
+Here create method is the default, so can call like below also....
+
+	obj = StockDetails(field1=val1, field2=val2, ....)
+	obj.save()
+
+#### In same way we have other ORM commands like, filter, get and all.....
+

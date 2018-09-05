@@ -1,0 +1,28 @@
+1. We have used "request" keyword in all view functions.
+2. Let's see how it works.
+
+##################################################################
+1. request is used for accesing the data which entered in FE.
+2. While accessing the PDB, use n for next line, c for continue, s- step in
+
+Now while printing the request, we can get a WSGI object as an output.
+
+Now request.method will return a Query Objects which includes a dictionary in it. So access the dictionary now to use the form data in Views.py. Here method can be either GET or POST.
+
+
+How to access the data from dictionary.
+
+
+Assume below is my dictionary.
+
+d = {'user': 'Hari', 'pwd': 'Kanna'}
+
+# Use Keying process or get method in dictionaries to access the data.
+
+print d['user']  ==> 'Hari'
+
+# in above example if the key is not available in dictionary will return "Key Error"
+
+To avoid that, always use "get" ,method in Dictionary.
+
+print d.get('user')  ==>  It will return "None" if the key is not available.

@@ -1,0 +1,7 @@
+0 PIN_FLD_POID                  POID [0] 0.0.0.1 /plan 11950 0
+0 PIN_FLD_CREATED_T            TSTAMP [0] (937336272) 09/14/99 12:11:12
+0 PIN_FLD_MOD_T                TSTAMP [0] (937336272) 09/14/99 12:11:12
+0 PIN_FLD_ACCOUNT_OBJ            POID [0] 0.0.0.1 /account -1 0
+0 PIN_FLD_DEAL_OBJ               POID [0] 0.0.0.0  0 0
+0 PIN_FLD_DESCR                   STR [0] "IP with 10 Free hrs per month"
+0 PIN_FLD_NAME                    STR [0] "Basic"

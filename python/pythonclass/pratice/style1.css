@@ -1,0 +1,167 @@
+body{
+	background: linear gradient(to bottom right, white, #bcbdc4)
+	height: 4000px;
+}
+.headerx
+{
+	width: 100%;
+	height: 100px;
+	position: fixed;
+	left: 0;
+	top: 0;
+	color: white;
+	z-index: 7;
+	font-family: arial;
+	-webkit-drop-shadow: o 3px 8px rgba(0, 0, 0, 0.25);
+}
+.header
+{
+	position: fixed;
+	width: 100%;
+	height: 100px;
+	background: #142170;
+	top: 0;
+	left: 0;
+	color: white;
+	z-index: 7;
+	font-family: arial;
+}
+#img1
+{
+	width: 200px;
+	left: 100px;
+	top: 15px;
+	height: 50px;
+}
+#img1 a {
+	font-family: arial;
+	font-size: 60px;
+	color: white;
+	text-decoration: none;
+}
+#form1{
+	left: 700px;
+	width: 180px;
+	top: 20px;
+	height: 70px;
+}
+#form2
+{
+	left: 895px;
+	top: 20px;
+	height: 60px;
+	width: 200px;
+}
+#login
+{
+	left: 1080px;
+	top: 39px;
+	position: fixed;
+	z-index: 20;
+	height: 50px;
+	width: 50px;
+	cursor: pointer;
+}
+.bodyx
+{
+	position: absolute;
+	left: 0;
+	top:100;
+	width: 100%;
+	height: 645px;
+}
+#intro1
+{
+	top: 120px;
+	left: 100px;
+	font-family: verdana;
+	font-weight: bold;
+	font-size: 25px;
+	width: 500px;
+}
+#img2
+{
+	top: 180px; 
+	left: 100px;
+	height: 250px;
+	width:500px;
+}
+#intro2
+{
+	top: 120px;
+	left: 700px;
+	font-family: verdana;
+	font-weight: bold;
+	font-size: 50px;
+	width: 500px;
+}
+#intro3
+{
+	top: 180px;
+	left: 700px;
+	font-family: verdana;
+	font-size: 20px;
+	width: 500px;
+}
+#form3
+{
+	top: 220px;
+	left: 700px;
+	font-family: verdana;
+	font-size: 18px;
+	color: #142170;
+	width: 450px;
+	height: 495px;
+}
+#namebox
+{
+	padding: 10px;
+	bottom: 5px;
+	font-size: 18px;
+	border-radius: 3px;
+	width: 180px;
+	margin-bottom: 10px;
+}
+#mailbox
+{
+	padding: 10px;
+	bottom: 5px;
+	font-size: 20px;
+	border-radius: 3px;
+	width: 400px;
+	margin-bottom: 10px;
+}
+a
+{
+	font-size: 14px;
+	height: 45px;
+	width: 180px;
+	float: right;
+	margin-right: 50px;
+	font-family: arial;
+	text-decoration: none;
+}
+#radio
+{
+	font-family: arial;
+	font-size: 20px;
+}
+#small
+{
+	font-family: arial;
+	font-size: 14px;
+}
+.button2
+{
+	width: 450px;
+	font-size: 30px;
+	height: 50px;
+	left: 700px;
+	top: 550px;
+	position: absolute;
+	background: green;
+	color: white;
+	border-radius: 10px/10px;
+	cursor: pointer;
+	outline: none;
+}

@@ -1,0 +1,7 @@
+Hi
+hello
+world
+today 
+I am
+learning python
+myworld exist with me
