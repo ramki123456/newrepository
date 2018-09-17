@@ -1,0 +1,657 @@
+#!/usr/bin/env python
+"""
+    Tool extends the testlink api for execution attachment management
+    and cleans attachments based on rules
+"""
+import argparse
+import base64
+import json
+import logging
+import smtplib
+import tarfile
+import traceback
+import xmlrpclib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+import datetime
+import os
+import sys
+
+XML_DEBUG = 3
+DEBUG = 2
+INFO = 1
+LOG = 0
+CALL = 0
+
+
+def send_email(message_dict):
+    """Send error message to the user incase of failure
+    """
+
+    email_data = {
+        'To': '%s' % (message_dict['email']),
+        'From': 'noreply@us.fujitsu.com',
+        'Login': None,
+        'Passwd': None,
+        'Timeout': 60,
+        'SMTP_Srv': 'smtp.fnc.fujitsu.com',
+        'SMTP_Port': 25,
+        'Sub': message_dict['subject'],
+        'Body': '''\t\t*****  This is an auto-generated email.  *****
+
+Dear user,
+
+      Your TestLink Project is running out of space.  Please clean up your logs or request more disk 
+      space as soon as possible.  If the project runs out of space the pipeline will fail.
+      [Details]: {message},
+      [Limit]: {limit},
+      [Threshold]: {threshold},
+      [Current]: {current}
+
+Regards,
+Framework Automation Team'''.format(**message_dict)
+    }
+    msg = MIMEMultipart()
+    msg['To'] = email_data['To']
+    msg['From'] = email_data['From']
+    msg['Subject'] = email_data['Sub']
+    msg.attach(MIMEText(email_data['Body'], 'plain'))
+    status = True
+
+    try:
+        message = 'Mail will be sent to : %s' % msg['To']
+        logging.info(message)
+        mail_server = smtplib.SMTP(email_data['SMTP_Srv'], email_data['SMTP_Port'],
+                                   timeout=email_data['Timeout'])
+        try:
+            if email_data['Login'] and email_data['Passwd']:
+                mail_server.login(email_data['Login'], email_data['Passwd'])
+            mail_server.sendmail(msg['From'], msg['To'].split(','), msg.as_string())
+            mail_server.quit()
+            message = 'Mail is sent successfully!'
+            logging.info(message)
+        except Exception as err:
+            message = 'Unable to send email! {} '.format(err)
+            logging.error(message)
+            status = False
+    except (smtplib.socket.gaierror, smtplib.socket.error,
+            smtplib.SMTPServerDisconnected) as err:
+        message = 'Unable to send email!{}'.format(err)
+        logging.error(message)
+        status = False
+    return status
+
+
+class UpdatedTestLinkAPI(object):
+    """
+        Class adding Fujitsu attachment api functions to testlink api
+    """
+    test_server = 'http://rtx-swtl-test-testlink.fnc.net.local'
+    test_key = '1d6e6559153bb842581f42ec5f75c744'
+    live_server = 'http://rtx-swtl-testlink.fnc.net.local'
+    live_key = '9f62aee3552be04c33fb8e83a9b0cbb3'
+    xml_api_location = '/lib/api/xmlrpc/v1/xmlrpc.php'
+
+    def __init__(self, test_flag=False, verbose_flag=False):
+        if test_flag:
+            xml_rpc = self.test_server + self.xml_api_location
+            self.dev_key = self.test_key
+        else:
+            xml_rpc = self.live_server
+            self.dev_key = self.live_key
+        xml_rpc += self.xml_api_location
+        self.server = xmlrpclib.Server(xml_rpc, verbose=verbose_flag)
+
+        self.__connection = self.server
+
+    def get_execution_set(self, test_plan_id, test_case_id):
+        """
+            Get the set of executions for a given testplan, testcase, and build
+        :param test_plan_id:
+        :param test_case_id:
+        :return:
+        """
+        data = {"devKey": self.dev_key,
+                "testplanid": test_plan_id,
+                "testcaseid": test_case_id}
+        return self.server.tl.getExecutionSet(data)
+
+    def get_project_attachment_info(self, project_id):
+        """
+            Get all attachment info for a project
+        :param project_id:
+        :return:
+        """
+        data = {"devKey": self.dev_key,
+                "testprojectid": project_id}
+        try:
+            attachments = self.server.tl.getProjectAttachmentInfo(data)
+        except Exception:
+            logging.info("Failed to get all data in one call breaking to smaller api calls")
+            logging.info("Collecting project requirement attachemnts")
+            reqs = self.server.tl.getRequiremnetAttachmentInfo(data)
+            logging.info("Collecting project testcase attachemnts")
+            test_cases = self.server.tl.getTestCaseAttachmentInfo(data)
+            logging.info("Collecting project testplans")
+            test_plans = self.server.tl.getProjectTestPlans(data)
+            executions = {}
+            for test_plan in test_plans:
+                send_data = {"devKey": self.dev_key,
+                             "testplanid": test_plan['id']}
+                try:
+                    message = "Collecting testplan {} test cases".format(test_plan['name'])
+                    logging.info(message)
+                    test_cases_in_plan = self.server.tl.getTestCasesForTestPlan(send_data)
+                    for test_case in test_cases_in_plan:
+                        message = "Collecting executions for test case {}".format(test_case)
+                        logging.debug(message)
+                        execution_set = self.get_execution_set(test_plan['id'],
+                                                               test_case)
+                    for exec_record in execution_set:
+                        if 'id' in exec_record and exec_record['id'] in [-1, 1]:
+                            continue
+                        data = self.get_execution_attachment_info(execution_set[exec_record]['id'])
+                        if data is None or data == '':
+                            continue
+                        executions[exec_record] = data
+                        executions[exec_record]['execution_ts'] = exec_record['execution_ts']
+                except Exception as detail:
+                    message = "Failed to collect executions for testplan {}: Details: {}"
+                    message = message.format(test_plan['name'], detail.message)
+                    logging.error(message)
+
+            attachments = {'requirements': reqs,
+                           'test_cases': test_cases,
+                           'executions': executions}
+        return attachments
+
+    def upload_execution_attachment(self, execution_id, file_name, title, description):
+        with open(file_name, 'r') as file_pointer:
+            file_data = file_pointer.read()
+        data = {"devKey": self.dev_key,
+                "executionid": int(execution_id),
+                "title": title,
+                "description": description,
+                "filename": file_name,
+                "filetype": "application/x-tar",
+                "content": base64.b64encode(file_data)}
+        return self.server.tl.uploadExecutionAttachment(data)
+
+    def get_execution_attachment_info(self, execution_id):
+        """
+            Get execution attachment info dictionary
+        :param execution_id:
+        :return:
+        """
+        data = {"devKey": self.dev_key,
+                "executionid": int(execution_id)}
+        return self.server.tl.getExecutionAttachmentInfo(data)
+
+    def get_execution_attachments(self, execution_id):
+        """
+            Gets all attachments for a given execution
+        :param execution_id:
+        :return:
+        """
+        data = {"devKey": self.dev_key,
+                "executionid": int(execution_id)}
+        return self.server.tl.getExecutionAttachments(data)
+
+    def delete_attachment(self, attachmentid):
+        """
+            Deletes all attachments for a execution
+        :param attachmentid:
+        :return:
+        """
+        data = {"devKey": self.dev_key,
+                "attachmentid": int(attachmentid)}
+        return self.server.tl.deleteAttachment(data)
+
+    def get_connection(self):
+        """
+            Gets base testlinkapi
+        :return:
+        """
+        return self.__connection
+
+    def get_project_info(self, project_name):
+        """
+            Get project id and name from the partial name
+        :param project_name:
+        :return:
+        """
+        data = {"devKey": self.dev_key}
+        projects = self.server.tl.getProjects(data)
+        for project in projects:
+            if project_name in project['name']:
+                return project['id'], project['name']
+
+
+class LogCleaner(object):
+    """
+        Class to check project attachment size and compress if needed
+    """
+
+    def __init__(self, *args, **kwargs):
+        self.verbose = kwargs['verbosity']
+        xml_log = True if self.verbose == XML_DEBUG else False
+        self.test_link = UpdatedTestLinkAPI(kwargs['test'], xml_log)
+        self.limit = kwargs['limit']
+        self.threshold = kwargs['threshold'] or (1024 * 1024 * 10)
+        try:
+            self.project_id, self.project_name = self.test_link.get_project_info(kwargs['project'])
+        except TypeError:
+            message = "Project {} not found".format(kwargs['project'])
+            logging.error(message)
+            exit(1)
+        self.attachment_info = None
+        self.email = kwargs['email']
+        self.project_files_bytes = 0
+        self.execution_array = []
+        self.file_list = []
+        self.max_execution = 0
+        self.bytes_reduced = 0
+
+    @staticmethod
+    def __log(level, string):
+        """
+            Logging function
+        :param level:
+        :param string:
+        :return:
+        """
+        if level <= INFO:
+            logging.info(string)
+        elif level == DEBUG:
+            logging.debug(string)
+
+    def __process_attachments(self, base_tag):
+        """
+            Calculate attachment sizes
+        :param base_tag:
+        :return:
+        """
+        self.__log(LOG, "Calculating file size with {} data ".format(base_tag))
+        base_dict = {}
+        try:
+            base_dict = self.attachment_info[base_tag]
+        except KeyError:
+            pass
+
+        for base_data in base_dict:
+            self.__log(DEBUG, "\t{} = {}".format(base_tag, base_dict[base_data]))
+            sum_of_files = 0
+            if 'executions' in base_tag:
+                self.execution_array.append(base_data)
+            for attachment in base_dict[base_data]:
+                if 'executions' in base_tag and 'execution_ts' in attachment:
+                    continue
+                self.__log(DEBUG,
+                           "\t\tAttachment = {}".format(base_dict[base_data][attachment]))
+                self.project_files_bytes += int(base_dict[base_data][attachment]['file_size'])
+                sum_of_files += int(base_dict[base_data][attachment]['file_size'])
+
+            if sum_of_files > self.max_execution and 'executions' in base_tag:
+                self.max_execution = sum_of_files
+                print_string = "Max size of execution file set update to = {} "
+                self.__log(DEBUG, print_string.format(self.max_execution))
+        if 'executions' in base_tag:
+            self.__log(LOG, "Max size of execution file set = {} ".format(self.max_execution))
+        self.__log(LOG, "Project Data after {} data {}".format(base_tag, self.project_files_bytes))
+
+    def collect_data(self):
+        """
+            Collect attachment information and calculate size
+        :return:
+        """
+        self.attachment_info = self.test_link.get_project_attachment_info(self.project_id)
+        message = "attachment_info = {}".format(str(self.attachment_info))
+        self.__log(DEBUG, message)
+        sets = ['test_cases', 'requirements', 'executions']
+        for set_name in sets:
+            self.__process_attachments(set_name)
+
+    def __download_attachments(self, full_info):
+        """
+            Download files from the attachment dictionary
+        :param full_info:
+        :return:
+        """
+        self.file_list = []
+        for file_data in full_info:
+            record = full_info[file_data]
+            if "compressed" in record['file_type'] or "zip" in record['file_type'] or "tar" in record['file_type']:
+                continue
+            self.file_list.append(record['name'])
+            file_obj = file(record['name'], 'w')
+            file_obj.write(base64.b64decode(record['content']))
+            file_obj.close()
+            self.__remove_tl_file(record)
+
+    def __tar_files(self):
+        """
+            Tar and gzip files from the execution
+        :return:
+        """
+        files_to_upload = []
+        for name in self.file_list:
+            if name.split('.')[-1] in ['tgz', 'zip', 'gz']:
+                continue
+            tar_file_name = name + '.tgz'
+            tar = tarfile.open(tar_file_name, 'w:gz')
+            self.__log(LOG, "\tTar file {file_name} created".format(file_name=tar_file_name))
+            tar.add(name)
+            self.__log(LOG, "\t\tFile {name} added to {file_name}".format(
+                file_name=tar_file_name, name=name))
+            os.remove(name)
+            tar.close()
+            files_to_upload.append(tar_file_name)
+        return files_to_upload
+
+    def __remove_tl_file(self, record):
+        """
+            Delete files from testlink
+        :return:
+        """
+        self.__log(LOG, "\tRemoving files from TestLink")
+        info = self.test_link.delete_attachment(record['id'])
+        self.__log(DEBUG, "\t\tServer Response to delete: {}".format(str(info)))
+        self.__log(LOG, "\t\tFile : {name} Status: {status}".format(name=info['name'],
+                                                                    status=info['status']))
+
+
+    def __clean_attachments(self, execution_dict, execution):
+        """
+            Download, delete, compress, and upload tar.gz files for an execution
+            Checks if the only attachment is a tar.gz already before processing
+        :param execution_dict:
+        :param execution:
+        :return:
+        """
+        bytes_removed = 0
+        for attachment in execution_dict[execution]:
+            record = execution_dict[execution][attachment]
+            if "execution_ts" in attachment:
+                continue
+
+            if "compressed" in record['file_type'] or "zip" in record['file_type'] or "tar" in record['file_type']:
+                print_string = "\tSkipping file {} as it is of type {}"
+                self.__log(LOG, print_string.format(record['name'], record['file_type']))
+                continue
+            else:
+                bytes_removed = int(record['file_size'])
+            if bytes_removed == 0:
+                return
+
+        full_info = self.test_link.get_execution_attachments(execution)
+        self.__download_attachments(full_info)
+
+        tar_files = self.__tar_files()
+        for tar_file_name in tar_files:
+            upload_status = self.test_link.upload_execution_attachment(
+                execution_id=execution,
+                file_name=tar_file_name,
+                title='Logs',
+                description='Logs'
+            )
+            os.remove(tar_file_name)
+            self.bytes_reduced += bytes_removed - int(upload_status['file_size'])
+            self.__log(LOG, "File {} uploaded details {}".format(tar_file_name, upload_status))
+
+    def __process_execution_age_based(self, age_check):
+        """
+            Processes executions based on the age_check in days
+        :param age_check:
+        :return:
+        """
+        current_date = datetime.datetime.now().date()
+        execution_dict = self.attachment_info['executions']
+        for execution in self.execution_array:
+            exec_date = datetime.datetime.strptime(execution_dict[execution]['execution_ts'],
+                                                   "%Y-%m-%d %H:%M:%S").date()
+            age = (current_date - exec_date).days
+            print_string = "Execution = {} current date = {} exec_date = {} age = {} days"
+            self.__log(DEBUG, print_string.format(execution, current_date, exec_date, age))
+
+            if age > age_check:
+                self.__clean_attachments(execution_dict, execution)
+
+    def __process_execution_iterative(self, age_check):
+        """
+            Processes attachments iteratively until enough space is opened to upload a new
+            execution
+        :param age_check:
+        :return:
+        """
+        current_date = datetime.datetime.now().date()
+        execution_dict = self.attachment_info['executions']
+        self.project_files_bytes -= self.bytes_reduced
+        self.bytes_reduced = 0
+        for execution in self.execution_array:
+            exec_date = datetime.datetime.strptime(execution_dict[execution]['execution_ts'],
+                                                   "%Y-%m-%d %H:%M:%S").date()
+            age = (current_date - exec_date).days
+            if age < age_check:
+                print_string = "Execution = {} current date = {} exec_date = {} age = {} days"
+                self.__log(DEBUG, print_string.format(execution, current_date, exec_date, age))
+                self.__clean_attachments(execution_dict, execution)
+            if self.bytes_reduced > self.max_execution:
+                return
+
+    def process_logs(self):
+        """
+            Checks project data and processes logs as needed
+        :return:
+        """
+        if self.project_files_bytes >= (self.limit - self.threshold):
+            print_string = "Project files of {total} approaching "
+            print_string += "limit of {limit} will compress executions older than 30 days"
+            self.__log(LOG, print_string.format(total=self.project_files_bytes, limit=self.limit))
+            self.execution_array.sort(reverse=True)
+            self.__process_execution_age_based(30)
+            print_string = "Through age based compression reduced storage by {} "
+            self.__log(LOG, print_string.format(self.bytes_reduced))
+            if (self.project_files_bytes - self.bytes_reduced) > (self.limit - self.threshold):
+                print_string = "30 Day age compression did not meet limit."
+                print_string += " Reducing by iteration."
+                self.__log(LOG, print_string)
+                self.__process_execution_iterative(30)
+                print_string = "Through iteration reduced storage by {} "
+                self.__log(LOG, print_string.format(self.bytes_reduced))
+                if self.bytes_reduced < self.max_execution:
+                    threshold = self.limit - self.threshold
+                    file_size = self.project_files_bytes - self.bytes_reduced
+                    print_string = "TestLink project {project_name} file data size {project} over "
+                    print_string += "warning threshold {threshold}."
+                    print_string = print_string.format(project=file_size,
+                                                       project_name=self.project_name,
+                                                       threshold=threshold)
+                    self.__log(LOG, print_string)
+                    send_email({'subject': print_string,
+                                'message': print_string,
+                                'email': self.email,
+                                'limit': self.limit,
+                                'threshold': self.threshold,
+                                'current': file_size})
+                    if file_size + self.max_execution >= self.limit:
+                        print_string = "TestLink project {project_name}  file data size {project}"
+                        print_string += " does not have enough space for another execution, max "
+                        print_string += "execution size {max_execution},  within the limit"
+                        print_string += " {limit}. Failing execution!"
+                        print_string = print_string.format(project=file_size,
+                                                           project_name=self.project_name,
+                                                           limit=self.limit,
+                                                           max_execution=self.max_execution)
+                        self.__log(LOG, print_string)
+                        send_email({'subject': print_string,
+                                    'message': print_string,
+                                    'email': self.email,
+                                    'limit': self.limit,
+                                    'threshold': self.threshold,
+                                    'current': file_size})
+                        return 1
+            return 0
+
+
+def _create_parser(args):
+    """
+        Creates argument parser for command line arguments
+    :param args:
+    :return:
+    """
+    description = 'Checks test link project execution logs and cleans up logs as needed'
+    parser = argparse.ArgumentParser(description=description)
+
+    help_data = 'Use test server'
+    parser.add_argument('--test', help=help_data, action='store_true', default=False)
+
+    help_data = 'Product JSON file'
+    parser.add_argument('--json', help=help_data, default=False)
+
+    help_data = 'Increase output verbosity. Can be specified multiple times.'
+    parser.add_argument('--verbosity', '-v', action="count", default=0, help=help_data)
+
+    help_data = 'Project to clean up'
+    parser.add_argument('--project', '-p', help=help_data, type=str)
+
+    help_data = 'Product to clean up'
+    parser.add_argument('--product', help=help_data, type=str)
+
+    help_data = 'Release to clean up'
+    parser.add_argument('--release', help=help_data, type=str)
+
+    help_data = 'Data limit in MiB (1 = 1024*1024 bytes)'
+    parser.add_argument('--limit', '-l', help=help_data, type=float, default=1000)
+
+    help_data = 'Data threshold in MiB (1 = 1024*1024 bytes)'
+    parser.add_argument('--threshold', '-t', help=help_data, type=float, default=100)
+
+    help_data = 'Email address(es) for notification of limit exceptions'
+    parser.add_argument('--email', '-e', type=str, nargs='+', action='append', help=help_data)
+
+    return parser.parse_args(args)
+
+
+def main(arguments):
+    """
+        Main function run when script is called
+    :param arguments:
+    """
+    name = os.path.basename(__file__)
+    logging_format = '[%(levelname)s] %(asctime)s ' + str(name) + ': %(message)s'
+    log_level = logging.WARNING
+    args = _create_parser(arguments)
+    if not args.json:
+        if not args.product or not args.limit or not args.threshold or not args.project:
+            _create_parser(['-h'])
+
+    if args.verbosity >= DEBUG:
+        log_level = logging.DEBUG
+    elif args.verbosity == INFO:
+        log_level = logging.INFO
+    elif args.verbosity == LOG:
+        log_level = logging.WARNING
+
+    logging.basicConfig(level=log_level, format=logging_format)
+
+    logging.info("Args = " + str(args))
+
+    clean_args = vars(args)
+    clean_args['email'] = '' if clean_args['email'] is None else str(clean_args['email'])
+    clean_args['email'] = clean_args['email'].replace('[', '')
+    clean_args['email'] = clean_args['email'].replace(']', '')
+    clean_args['email'] = clean_args['email'].replace('u\'', '')
+    clean_args['email'] = clean_args['email'].replace('\'', '')
+
+    clean_args['limit'] = clean_args['limit'] * 1024 * 1024
+    clean_args['threshold'] = clean_args['threshold'] * 1024 * 1024
+
+    if args.json:
+        json_data = None
+        try:
+            with open(args.json, 'r') as json_file:
+                json_data = json.load(json_file)
+        except Exception as e:
+            message = "Failed to load JSON file {}".format(args.json)
+            logging.error(message)
+            message = "Detail: {}".format(str(e))
+            logging.error(message)
+            formatted_lines = traceback.format_exc().splitlines()
+            for line in formatted_lines:
+                logging.error(line)
+        try:
+            if args.release and args.product:
+                json_file = json_data[0]
+                if 'stream_lead' in json_file:
+                    clean_args['email'] += "," + json_file['stream_lead']
+                for item in json_file['product_info_list']:
+                    if args.release == item['product_release'] and args.product == item['product_name']:
+                        if 'stream_lead' in item:
+                            clean_args['email'] += "," + item['stream_lead']
+                        if 'enovia' in item and 'email' in item['enovia']:
+                            email_str = str(item['enovia']['email'])
+                            email_str = email_str.replace('[', '')
+                            email_str = email_str.replace(']', '')
+                            email_str = email_str.replace('u\'', '')
+                            email_str = email_str.replace('\'', '')
+                            email_str = email_str.replace("\"", '')
+
+                            clean_args['email'] += "," + email_str
+
+                        clean_args['project'] = item['testlink']['project_name']
+                        clean_args['limit'] = item['testlink']['test_link_space_MiB'] * 1024 * 1024
+                        clean_args['threshold'] = item['testlink']['test_link_threshold_MiB'] * 1024 * 1024
+                        logging.info("UpdatedArgs = " + str(clean_args))
+            else:
+                if 'stream_lead' in json_data:
+                    clean_args['email'] += json_data['stream_lead']
+                clean_args['project'] = json_data['testlink']['project_name']
+                clean_args['limit'] = json_data['testlink']['test_link_space_MiB'] * 1024 * 1024
+                clean_args['threshold'] = json_data['testlink']['test_link_threshold_MiB'] * 1024 * 1024
+                logging.info("UpdatedArgs = " + str(clean_args))
+        except Exception as e:
+            message = "Failed to retrieve value from JSON file {}".format(args.json)
+            logging.error(message)
+            message = "Detail: {}".format(str(e))
+            logging.error(message)
+            formatted_lines = traceback.format_exc().splitlines()
+            for line in formatted_lines:
+                logging.error(line)
+
+    cleaner = LogCleaner(**clean_args)
+    cleaner.collect_data()
+    return cleaner.process_logs()
+
+
+if __name__ == '__main__':
+    exit(main(sys.argv[1:]))
+    
+    
+    def send_emails(self):
+        for email_action in self.email_action_list:
+            if 'project_name' in email_action:
+                argument_list = ["--project", email_action['project_name'], "--specified-items-only"]
+                json_info_list = self._get_project_info(arg_list=argument_list) 
+            elif 'product_name' in action and 'product_release' in action:
+                #Need to populate array for product cleans in artifactory as well 
+                #edited_artifactory_products.append((action['project_name'], (action['project_release']))
+                argument_list = ["--product", "%s,%s" % (email_action['product_name'], email_action['product_release']), "--specified-items-only"]
+                json_info_list = self._get_project_info(arg_list=argument_list) 
+            else:
+                logger.error("Send email action does not include the 'project_name or 'product_name': %s", action)
+            json_info = json_info_list[0]
+            if 'email_group_list' in json_info:
+                email_group_list = json_info['email_group_list']
+                email_list = self.email_list_return.get_email_group_list(email_group_list, ["artifactory"])
+                if 'message' in email_action:
+                    msg = MIMEText(email_action['message'])
+                if 'subject' in email_action:
+                    msg["Subject"] = email_action['subject']
+                msg["To"] = ", ".join(email_list)
+                s = smtplib.SMTP('localhost')
+                sender = "noreply@fnc.fujitsu.com"
+                s.sendmail(sender, email_list, msg.as_string())
+                s.quit()
+            else:
+                logger.error("Project/product info at path '%s' does not have a defined 'email_group_list'", json_path)
