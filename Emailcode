@@ -1,0 +1,88 @@
+#!/usr/bin/python
+import os
+import smtplib
+import subprocess
+import re
+
+def send_message(recipient, subject, body):
+    try:
+      process = subprocess.Popen(['mail', '-s', subject,'-r','metroadm@us.fujitsu.com' , recipient],
+                               stdin=subprocess.PIPE)
+    except Exception, error:
+      print error
+    process.communicate(body)
+recipient1 = 'meghanathan.thiruneelakandan@us.fujitsu.com'
+recipient2 = 'DevToolsSupport@fnc.fujitsu.com'
+subject1 = 'Richardson /proj Disk Usage '
+subject2 = 'WARNING:Richardson proejct folder disk usage reached 90%'
+body = ""
+values = []
+with os.popen('ssh rtxapplp10 df -khP /proj/artifacts/ /proj/bitbake/ /atldata/') as cmd:
+    body = body + cmd.read()
+
+for line in body.splitlines():
+    fields = line.split()
+    use = fields[4]
+    nuse = re.sub(r'[%]',r'',use)
+    nuse = re.sub(r'[Use]',r'',nuse)
+    nuse = nuse.strip();
+    if nuse != '':
+      values.append(nuse)
+if ((int(values[0]) >= 90) or (int(values[1]) >= 90)) :
+
+     send_message(recipient2, subject2, body)
+else :
+     send_message(recipient1, subject1, body)
+
+
+
+#!/usr/bin/python
+import os
+import smtplib
+import subprocess
+import re
+import socket
+
+def send_message(recipient, subject, body):
+    try:
+      process = subprocess.Popen(['mail', '-s', subject,'-r','metroadm@us.fujitsu.com' , recipient],
+                               stdin=subprocess.PIPE)
+    except Exception, error:
+      print error
+    process.communicate(body)
+recipient1 = 'meghanathan.thiruneelakandan@us.fujitsu.com'
+recipient2 = 'DevToolsSupport@fnc.fujitsu.com'
+subject1 = 'Application Server Disk Usage '
+subject2 = 'WARNING:Application Server disk usage reached 90%'
+my_local_host = socket.gethostname()
+my_server = [my_local_host,"rtxapplp02","rtxapplp04","rtxapplp05","rtxapplp06","rtxapplp07","rtxapplp10"]
+dy = ""
+body = ""
+values = []
+failed_server = []
+for server in my_server:
+   threshold = "no"
+   server = str(server)
+   if (server == my_local_host):
+      body_app ='Common Space Disk Usage:\n'
+      with os.popen('df -khP /proj/artifacts/ /proj/bitbake/') as cmd:
+           body = body_app + cmd.read()
+   value = []
+   if (server != my_local_host):
+      body_app ='Application Sever '+server+' disk usage:\n'
+      with os.popen('ssh '+server+' df -khP / /atldata/') as cmd:
+         body = body_app + cmd.read()
+   values = []
+   for line in body.splitlines()[1:]:
+      fields = line.split()
+      use = fields[4]
+      nuse = re.sub(r'[%]',r'',use)
+      nuse = re.sub(r'[Use]',r'',nuse)
+      nuse = nuse.strip();
+      if nuse != '':
+         values.append(nuse)
+   if ((int(values[0]) >= 90) or (int(values[1]) >= 90)) :
+      failed_server.append(server)
+      threshold = "yes"
+   if (threshold == "yes") :
+      send_message(recipient2, subject2, body)
