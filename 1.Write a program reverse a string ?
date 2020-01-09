@@ -1,0 +1,122 @@
+1.Write a program reverse a string ?
+
+2.Find count accourance of Palindrome in a list?
+	def num_palindromes(start, end):
+	    count = 0
+	    for i in range(start, end + 1):
+	        if str(i) == str(i)[::-1]:
+	            count += 1
+	    return count
+
+3.Find length of string without using any built in functions?
+	# User inputs the string and it gets stored in variable str
+	str = input("Enter a string: ")
+
+	# counter variable to count the character in a string
+	counter = 0
+	for s in str:
+    	  counter = counter+1
+	print("Length of the input string is:", counter)
+
+
+4.Diamond program add,sub,mul,division
+	side = int(input("Please input side length of diamond: "))
+
+	for x in list(range(side)) + list(reversed(range(side-1))):
+    	print('{: <{w1}}{:*<{w2}}'.format('', '', w1=side-x-1, w2=x*2+1))
+     *
+    ***
+   *****
+  *******
+ *********
+***********
+ *********
+  *******
+   *****
+    ***
+     *
+
+5.Write a pgm for a list using bubble sort
+
+def bubbleSort(arr):
+    n = len(arr)
+ 
+    # Traverse through all array elements
+    for i in range(n):
+ 
+        # Last i elements are already in place
+        for j in range(0, n-i-1):
+ 
+            # traverse the array from 0 to n-i-1
+            # Swap if the element found is greater
+            # than the next element
+            if arr[j] > arr[j+1] :
+                arr[j], arr[j+1] = arr[j+1], arr[j]
+ 
+# Driver code to test above
+arr = [64, 34, 25, 12, 22, 11, 90]
+ 
+bubbleSort(arr)
+ 
+print ("Sorted array is:")
+for i in range(len(arr)):
+    print ("%d" %arr[i]), 
+
+
+
+6.Wrt a program to shuffle a list without using inbuilt methods?
+import random
+def shuffle_in_place(array):
+    array_len = len(array)
+    assert array_len > 2, 'Array is too short to shuffle!'
+    for index in range(array_len):
+        swap = random.randrange(array_len - 1)
+        #swap += swap >= index
+        array[index], array[swap] = array[swap], array[index]
+    return array
+
+
+array = shuffle_in_place(list(range(10)))
+print array
+
+7.write program for overloading?
+
+8.write a program for decorators?
+	# Adds a welcome message to the string 
+	# returned by fun(). Takes fun() as 
+	# parameter and returns welcome(). 
+	def decorate_message(fun): 
+	  
+	    # Nested function 
+	    def addWelcome(site_name): 
+	        return "Welcome to " + fun(site_name) 
+	  
+	    # Decorator returns a function 
+	    return addWelcome 
+	  
+	@decorate_message
+	def site(site_name): 
+	    return site_name; 
+	  
+	# Driver code 
+	  
+	# This call is equivalent to call to 
+	# decorate_message() with function 
+	# site("GeeksforGeeks") as parameter 
+	print site("GeeksforGeeks") 
+
+1) Find the Merge point of two linked lists.
+for i in xrange(2):
+    if headA is not None:
+        if ( headB and headA.data<=headB.data) or (headB is None):
+            tail.next = headA
+            tail = headA
+            headA = headA.next
+    # When i==0, this will flip headA & headB
+    # When i==1, it will restore them
+    headA,headB = headB,headA
+
+3) Reverse individual words of the sentence.
+>>> s='The dog ran'
+>>> ' '.join(w[::-1] for w in s.split())
+'ehT god nar'
